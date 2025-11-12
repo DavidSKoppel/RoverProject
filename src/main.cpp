@@ -1,7 +1,8 @@
 #include <Arduino.h>
 
 //long minDist1, minDist2;
-QueueSetHandle_t QDistance1 = NULL, QDistance2 = NULL;
+QueueSetHandle_t QDistance1 = NULL;
+QueueSetHandle_t QDistance2 = NULL;
 long maxRange = 7.0;
 
 TaskHandle_t UltraTaskHandle = NULL;
@@ -14,15 +15,13 @@ struct UltraSound
 
     long cm, duration;
 
-    QueueSetHandle_t QDistance;
-
     void setupPins() 
     {
         pinMode(trigPin, OUTPUT);
         pinMode(echoPin, INPUT);
     }
 
-    void distance(){
+    long distance(){
         digitalWrite(trigPin, LOW);
         delayMicroseconds(5);
         digitalWrite(trigPin, HIGH);
@@ -34,8 +33,7 @@ struct UltraSound
         
         // Convert the time into a distance
         cm = (duration/2) / 29.1;     // Divide by 29.1 or multiply by 0.0343
-        xQueueSend(QDistance, &cm, portMAX_DELAY);
-        //return cm;
+        return cm;
     }
 };
 
@@ -55,9 +53,9 @@ struct Hbro
     }
     void forward()
     {
-        analogWrite(motorA1, 255);
+        analogWrite(motorA1, 100);
         analogWrite(motorA2, 0);
-        analogWrite(motorB1, 255);
+        analogWrite(motorB1, 100);
         analogWrite(motorB2, 0);
     }
     void backward()
@@ -111,11 +109,17 @@ UltraSound leftU;
 UltraSound rightU;
 
 void UltraTask(void *parameter) {
-  while(true){
-    leftU.distance();
-    rightU.distance();
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-  }
+    long qDist1, qDist2;
+
+    while(true){
+        qDist1 = leftU.distance();
+        xQueueSend(QDistance1, &qDist1, portMAX_DELAY);
+
+        qDist2 = rightU.distance();
+        xQueueSend(QDistance2, &qDist2, portMAX_DELAY);
+
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
 }
 
 void WheelsTask(void *parameter) {
@@ -128,22 +132,25 @@ void WheelsTask(void *parameter) {
         
         if (range1 < maxRange)
         {
+            Serial.println(range1);
             Serial.println("Too close right");
             frontWheels.gentleLeft();
             backWheels.gentleLeft();
         }
         else if(range2 < maxRange)
         {
+            Serial.println(range2);
             Serial.println("Too close left");
             frontWheels.gentleRight();
             backWheels.gentleRight();
         }
         else
         {
+            Serial.println("Moving forward");
             frontWheels.forward();
             backWheels.forward();
         }
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(250 / portTICK_PERIOD_MS);
     }
 }
 
@@ -158,24 +165,25 @@ void setup() {
 
   backWheels.motorA1 = 4;
   backWheels.motorA2 = 16;
-  backWheels.motorB1 = 5;
-  backWheels.motorB2 = 17;
+  backWheels.motorB1 = 17;
+  backWheels.motorB2 = 5;
   backWheels.setupPins();
 
   leftU.trigPin = 13;
   leftU.echoPin = 12;
-  leftU.QDistance = QDistance1;
   leftU.setupPins();  
 
   rightU.trigPin = 19;
   rightU.echoPin = 18;
-  leftU.QDistance = QDistance2;
   rightU.setupPins();
+
+  QDistance1 = xQueueCreate(5, sizeof(long));
+  QDistance2 = xQueueCreate(5, sizeof(long));
 
   xTaskCreatePinnedToCore(
     UltraTask,        // Task function
     "UltraTask",      // Task name
-    4096,             // Stack size (bytes)
+    2048,             // Stack size (bytes)
     NULL,             // Parameters
     1,                // Priority
     &UltraTaskHandle, // Task handle
@@ -185,7 +193,7 @@ void setup() {
   xTaskCreatePinnedToCore(
     WheelsTask,        // Task function
     "WheelsTask",      // Task name
-    4096,              // Stack size (bytes)
+    2048,              // Stack size (bytes)
     NULL,              // Parameters
     1,                 // Priority
     &WheelsTaskHandle, // Task handle
