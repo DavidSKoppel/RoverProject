@@ -2,7 +2,7 @@
 
 //long minDist1, minDist2;
 QueueSetHandle_t QDistance1 = NULL, QDistance2 = NULL;
-long maxDistance = 7.0;
+long maxRange = 7.0;
 
 TaskHandle_t UltraTaskHandle = NULL;
 TaskHandle_t WheelsTaskHandle = NULL;
@@ -81,14 +81,14 @@ struct Hbro
         analogWrite(motorB1, 0);
         analogWrite(motorB2, 255);
     }
-    void mildRight()
+    void gentleRight()
     {
         analogWrite(motorA1, 0);
         analogWrite(motorA2, 128);
         analogWrite(motorB1, 0);
         analogWrite(motorB2, 0);
     }
-    void mildLeft()
+    void gentleLeft()
     {
         analogWrite(motorA1, 0);
         analogWrite(motorA2, 0);
@@ -104,6 +104,12 @@ struct Hbro
     }
 };
 
+Hbro frontWheels;
+Hbro backWheels;
+
+UltraSound leftU;
+UltraSound rightU;
+
 void UltraTask(void *parameter) {
   while(true){
     leftU.distance();
@@ -116,20 +122,21 @@ void WheelsTask(void *parameter) {
     long range1, range2;
 
     while(true){
+        //FIX add handling for when getting data from queue is taking too long
         xQueueReceive(QDistance1, &range1, portMAX_DELAY);
         xQueueReceive(QDistance2, &range2, portMAX_DELAY);
         
-        if (range1 < maxDistance)
+        if (range1 < maxRange)
         {
             Serial.println("Too close right");
-            frontWheels.mildLeft();
-            backWheels.mildLeft();
+            frontWheels.gentleLeft();
+            backWheels.gentleLeft();
         }
-        else if(range2 < maxDistance)
+        else if(range2 < maxRange)
         {
             Serial.println("Too close left");
-            frontWheels.mildRight();
-            backWheels.mildRight();
+            frontWheels.gentleRight();
+            backWheels.gentleRight();
         }
         else
         {
@@ -139,12 +146,6 @@ void WheelsTask(void *parameter) {
         vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 }
-
-Hbro frontWheels;
-Hbro backWheels;
-
-UltraSound leftU;
-UltraSound rightU;
 
 void setup() {
   Serial.begin(9600);
