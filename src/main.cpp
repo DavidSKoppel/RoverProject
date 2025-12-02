@@ -1,48 +1,25 @@
-#include <Arduino.h>
+#include <esp_now.h>
+#include <WiFi.h>
+#include <Elog.h>
+#include "math.hpp"
 
-//long minDist1, minDist2;
-QueueSetHandle_t QDistance1 = NULL;
-QueueSetHandle_t QDistance2 = NULL;
-long maxRange = 7.0;
+#define DEBUG_LOG 0
+#define INFO_LOG 1
+#define ERR_LOG 2
 
-TaskHandle_t UltraTaskHandle = NULL;
 TaskHandle_t WheelsTaskHandle = NULL;
 
-struct UltraSound
-{
-    int trigPin = 12;
-    int echoPin = 13;
-
-    long cm, duration;
-
-    void setupPins() 
-    {
-        pinMode(trigPin, OUTPUT);
-        pinMode(echoPin, INPUT);
-    }
-
-    long distance(){
-        digitalWrite(trigPin, LOW);
-        delayMicroseconds(5);
-        digitalWrite(trigPin, HIGH);
-        delayMicroseconds(10);
-        digitalWrite(trigPin, LOW);
-        
-        pinMode(echoPin, INPUT);
-        duration = pulseIn(echoPin, HIGH);
-        
-        // Convert the time into a distance
-        cm = (duration/2) / 29.1;     // Divide by 29.1 or multiply by 0.0343
-        return cm;
-    }
+struct Message {
+  int x;
+  int y;
 };
 
 struct Hbro
 {
-  int motorA1 = 25;
-  int motorA2 = 26;
-  int motorB1 = 33;
-  int motorB2 = 32;
+  int motorA1;
+  int motorA2;
+  int motorB1;
+  int motorB2;
 
     void setupPins() 
     {
@@ -51,19 +28,19 @@ struct Hbro
         pinMode(motorB1, OUTPUT);
         pinMode(motorB2, OUTPUT);
     }
-    void forward()
+    void forward(int speed)
     {
-        analogWrite(motorA1, 100);
+        analogWrite(motorA1, speed);
         analogWrite(motorA2, 0);
-        analogWrite(motorB1, 100);
+        analogWrite(motorB1, speed);
         analogWrite(motorB2, 0);
     }
-    void backward()
+    void backward(int speed)
     {
         analogWrite(motorA1, 0);
-        analogWrite(motorA2, 255);
+        analogWrite(motorA2, speed);
         analogWrite(motorB1, 0);
-        analogWrite(motorB2, 255);
+        analogWrite(motorB2, speed);
     }
     void right()
     {
@@ -105,50 +82,40 @@ struct Hbro
 Hbro frontWheels;
 Hbro backWheels;
 
-UltraSound leftU;
-UltraSound rightU;
+Message messageData;
 
-void UltraTask(void *parameter) {
-    long qDist1, qDist2;
-
-    while(true){
-        qDist1 = leftU.distance();
-        xQueueSend(QDistance1, &qDist1, portMAX_DELAY);
-
-        qDist2 = rightU.distance();
-        xQueueSend(QDistance2, &qDist2, portMAX_DELAY);
-
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-    }
+// callback function that will be executed when data is received
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&messageData, incomingData, sizeof(messageData));
+  Serial.print("Bytes received: ");
+  Serial.print("X Value: ");
+  Serial.println(messageData.x);
+  Serial.print("Y Value: ");
+  Serial.println(messageData.y);
+  Serial.println();
 }
 
 void WheelsTask(void *parameter) {
-    long range1, range2;
+    long rangeX, rangeY;
 
     while(true){
-        //FIX add handling for when getting data from queue is taking too long
-        xQueueReceive(QDistance1, &range1, portMAX_DELAY);
-        xQueueReceive(QDistance2, &range2, portMAX_DELAY);
+        rangeX = messageData.x;
+        rangeY = messageData.y;
+
+        float speedF = map(rangeX, 2900.0, 4095.0, 0.0, 255.0);
+        float speedB = map(rangeX, 2900.0, 0.0, 0.0, 255.0);
         
-        if (range1 < maxRange)
+        if(speedF > speedB)
         {
-            Serial.println(range1);
-            Serial.println("Too close right");
-            frontWheels.gentleLeft();
-            backWheels.gentleLeft();
+            frontWheels.forward(speedF);
         }
-        else if(range2 < maxRange)
+        else if (speedF < speedB)
         {
-            Serial.println(range2);
-            Serial.println("Too close left");
-            frontWheels.gentleRight();
-            backWheels.gentleRight();
+            frontWheels.backward(speedB);
         }
         else
         {
-            Serial.println("Moving forward");
-            frontWheels.forward();
-            backWheels.forward();
+            frontWheels.stop();
         }
         vTaskDelay(250 / portTICK_PERIOD_MS);
     }
@@ -157,38 +124,35 @@ void WheelsTask(void *parameter) {
 void setup() {
   Serial.begin(9600);
   
+  // Logger for debugging and more
+  Logger.registerSerial(DEBUG_LOG, ELOG_LEVEL_DEBUG, "test"); // We want messages with DEBUG level and lower
+  
+  WiFi.mode(WIFI_STA);
+
+  if (esp_now_init() != ESP_OK) {
+    Logger.log(ERR_LOG, ELOG_LEVEL_ERROR, "Error initializing ESP-NOW");
+    //Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+
   frontWheels.motorA1 = 25;
   frontWheels.motorA2 = 26;
-  frontWheels.motorB1 = 33;
-  frontWheels.motorB2 = 32;
+  frontWheels.motorB1 = 32;
+  frontWheels.motorB2 = 33;
   frontWheels.setupPins();
-
+/*
   backWheels.motorA1 = 4;
   backWheels.motorA2 = 16;
   backWheels.motorB1 = 17;
   backWheels.motorB2 = 5;
   backWheels.setupPins();
+*/
 
-  leftU.trigPin = 13;
-  leftU.echoPin = 12;
-  leftU.setupPins();  
+  delay(100);
 
-  rightU.trigPin = 19;
-  rightU.echoPin = 18;
-  rightU.setupPins();
-
-  QDistance1 = xQueueCreate(5, sizeof(long));
-  QDistance2 = xQueueCreate(5, sizeof(long));
-
-  xTaskCreatePinnedToCore(
-    UltraTask,        // Task function
-    "UltraTask",      // Task name
-    2048,             // Stack size (bytes)
-    NULL,             // Parameters
-    1,                // Priority
-    &UltraTaskHandle, // Task handle
-    0                 // Core
-  );
+  // ESP_NOW runs on CORE_0
+  esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
+  
 
   xTaskCreatePinnedToCore(
     WheelsTask,        // Task function
