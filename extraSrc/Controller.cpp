@@ -7,20 +7,25 @@
 #define INFO_LOG 1
 #define CRIT_LOG 2
 
+bool buttonBeingPressed = false;
+
 struct Message {
   int x;
   int y;
+  int state;
 };
 
 struct Joystick
 {
-  int XPin = 33; //GPIO_15
-  int YPin = 32; //GPIO_2
+  int XPin = 33;
+  int YPin = 32;
+  int SwitchButton = 0;
 
   void setupPins() 
   {
     analogSetPinAttenuation(XPin,ADC_11db);
     analogSetPinAttenuation(YPin,ADC_11db);
+    pinMode(SwitchButton, INPUT_PULLUP);
   }
 
   int readX(){
@@ -29,6 +34,10 @@ struct Joystick
 
   int readY(){
     return analogRead(YPin);
+  }
+
+  int readButton(){
+    return digitalRead(SwitchButton);
   }
 };
 
@@ -39,6 +48,19 @@ Joystick joystick;
 uint8_t myBoardAddress[] = {0x00, 0x4b, 0x12, 0x3b, 0x47, 0x00};
 
 esp_now_peer_info_t peerInfo;
+
+int SwitchButtonState(int state){
+  if (!buttonBeingPressed && state == 0) //Button is just pressed
+  {
+    buttonBeingPressed = true;
+    return 1;
+  } 
+  else if (state == 1) //Button is released
+  {
+    buttonBeingPressed = false;
+  }
+  return 0;
+}
 
 // callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -61,7 +83,8 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 void setup() {
   // Init Serial Monitor
-  Serial.begin(9600);
+  Serial.begin(115200);
+
   // We want messages with DEBUG level and lower
   Logger.registerSerial(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Debug"); 
   Logger.registerSerial(INFO_LOG, ELOG_LEVEL_INFO, "Info"); 
@@ -84,7 +107,7 @@ void setup() {
   peerInfo.channel = 0;  
   peerInfo.encrypt = false;
 
-  // Add peer        
+  // Add peer
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Logger.log(CRIT_LOG, ELOG_LEVEL_CRITICAL, "Failed to add peer");
     return;
@@ -94,22 +117,23 @@ void setup() {
 }
 
 void loop() {
+  int state = joystick.readButton();
   message.x = joystick.readX();
   message.y = joystick.readY();
-  joystick.readY();
+  message.state = SwitchButtonState(state);
 
   // Send message via ESP-NOW
   esp_err_t result = esp_now_send(myBoardAddress, (uint8_t *) &message, sizeof(message));
   if (result == ESP_OK) {
-
     Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "---------------------------------------------------------------");
     Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Sent with success. Voltage value: ");
     Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "x: %d", message.x);
     Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "y: %d", message.y);
+    Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "state: %d", message.state);
     Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "---------------------------------------------------------------");
   }
   else {
     Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Error sending the data");
   }
-  delay(100);
+  delay(1000);
 }
