@@ -35,33 +35,19 @@ struct Hbro
         analogWrite(motorB1, 0);
         analogWrite(motorB2, speed);
     }
-    void right()
+    void right(int speed)
     {
         analogWrite(motorA1, 0);
-        analogWrite(motorA2, 255);
-        analogWrite(motorB1, 0);
+        analogWrite(motorA2, speed);
+        analogWrite(motorB1, speed);
         analogWrite(motorB2, 0);
     }
-    void left()
+    void left(int speed)
     {
-        analogWrite(motorA1, 0);
+        analogWrite(motorA1, speed);
         analogWrite(motorA2, 0);
         analogWrite(motorB1, 0);
-        analogWrite(motorB2, 255);
-    }
-    void gentleRight()
-    {
-        analogWrite(motorA1, 0);
-        analogWrite(motorA2, 128);
-        analogWrite(motorB1, 0);
-        analogWrite(motorB2, 0);
-    }
-    void gentleLeft()
-    {
-        analogWrite(motorA1, 0);
-        analogWrite(motorA2, 0);
-        analogWrite(motorB1, 0);
-        analogWrite(motorB2, 128);
+        analogWrite(motorB2, speed);
     }
     void stop()
     {
@@ -71,7 +57,4 @@ struct Hbro
         analogWrite(motorB2, 0);
     }
 };
-
-Hbro frontWheels;
-Hbro backWheels;
 

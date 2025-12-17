@@ -27,7 +27,7 @@ void setPWMOverTime(int servo, int from, int to, int milliTime){
     for (int posDegrees = from; posDegrees != to; posDegrees += step) {
         int pos = convertDegrees(posDegrees);
         PWMBoard.setPWM(servo, 0, pos);
-        vTaskDelay(delayTime / portTICK_PERIOD_MS);
-        //delay(delayTime);
+        //vTaskDelay(delayTime / portTICK_PERIOD_MS);
+        delay(delayTime);
     }
 }

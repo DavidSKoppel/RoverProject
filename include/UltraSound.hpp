@@ -5,8 +5,6 @@
 #define INFO_LOG 1
 #define ERR_LOG 2
 
-long minDist1, minDist2;
-
 struct UltraSound
 {
     int trigPin;

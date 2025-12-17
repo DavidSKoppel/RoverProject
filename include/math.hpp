@@ -1,3 +1,4 @@
+/*
 template<typename Q, typename W>
 Q lerp(Q a, Q b, W t) {
   return a + (b - a) * t;
@@ -13,4 +14,20 @@ float normalizeClamped(T value, U inMin, D inMax) {
     float t = float(value - inMin) / float(inMax - inMin);
     t = clamp(t,float(0.0),float(1.0));
     return t;
+}
+
+template<typename T, typename U, typename D>
+float normalizeClamped(T value, U inMin, D inMax) {
+    float t = float(value - inMin) / float(inMax - inMin);
+    t = clamp(t,float(0.0),float(1.0));
+    return t;
+}
+*/
+bool isClose(int a, int b, int tolerance)
+{
+    int diff = a - b;
+    if (diff < 0)
+        diff = -diff;   // manual absolute value
+
+    return diff <= tolerance;
 }

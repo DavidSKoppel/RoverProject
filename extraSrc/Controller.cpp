@@ -3,10 +3,13 @@
 #include <cstdint> // To define one 8 bit byte.
 #include <Elog.h>
 
+#include "math.hpp"
+
 #define DEBUG_LOG 0
 #define INFO_LOG 1
 #define CRIT_LOG 2
 
+int doubleClickTime = 0;
 bool buttonBeingPressed = false;
 
 struct Message {
@@ -42,6 +45,7 @@ struct Joystick
 };
 
 Message message;
+Message prevMessage;
 Joystick joystick;
 
 // REPLACE WITH YOUR RECEIVER MAC Address
@@ -122,18 +126,38 @@ void loop() {
   message.y = joystick.readY();
   message.state = SwitchButtonState(state);
 
-  // Send message via ESP-NOW
-  esp_err_t result = esp_now_send(myBoardAddress, (uint8_t *) &message, sizeof(message));
-  if (result == ESP_OK) {
-    Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "---------------------------------------------------------------");
-    Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Sent with success. Voltage value: ");
-    Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "x: %d", message.x);
-    Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "y: %d", message.y);
-    Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "state: %d", message.state);
-    Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "---------------------------------------------------------------");
+  //Handles double click
+  if(message.state && doubleClickTime > 0){
+    message.state = 2;
+    doubleClickTime = 0;
+  } else if (message.state && doubleClickTime <= 0){
+    doubleClickTime = 100;
+  } else if (doubleClickTime > 0) {
+    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "DoubleClickTime = %d", doubleClickTime);
+    doubleClickTime--;
   }
-  else {
-    Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Error sending the data");
+
+  if (!isClose(message.x, prevMessage.x, 100) || 
+      !isClose(message.y, prevMessage.y, 100) ||
+      message.state)
+  {
+    // Send message via ESP-NOW
+    esp_err_t result = esp_now_send(myBoardAddress, (uint8_t *) &message, sizeof(message));
+    if (result == ESP_OK) {
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "---------------------------------------------------------------");
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Sent with success. Voltage value: ");
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "x: %d", message.x);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "y: %d", message.y);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "state: %i", message.state);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "---------------------------------------------------------------");
+
+      prevMessage.x = message.x;
+      prevMessage.y = message.y;
+      prevMessage.state = message.state;
+    }
+    else {
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Error sending the data");
+    }
   }
-  delay(1000);
+  delay(1);
 }
