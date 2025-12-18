@@ -36,7 +36,6 @@ struct UltraSound
         cm = (duration/2) / 29.1;     // Divide by 29.1 or multiply by 0.0343
         
         Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Distance Measurement: %d", cm);
-        //Serial.println(cm);
         return cm;
     }
 };

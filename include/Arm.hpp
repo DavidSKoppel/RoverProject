@@ -4,10 +4,12 @@
 #define SERVOMIN 150
 #define SERVOMAX 600
 
-const int servoBase = 0;
-const int servoArmR = 1;
-const int servoArmL = 2;
-const int servoClaw = 3;
+enum Servo {
+    SERVO_BASE = 0,
+    SERVO_ARM_R = 1,
+    SERVO_ARM_L = 2,
+    SERVO_ARM_CLAW = 3,
+};
 
 Adafruit_PWMServoDriver PWMBoard = Adafruit_PWMServoDriver();
 
@@ -17,7 +19,7 @@ int convertDegrees(int degrees)
     return position;
 }
 
-void setPWMOverTime(int servo, int from, int to, int milliTime){
+void setPWMOverTime(Servo servo, int from, int to, int milliTime){
     int steps = abs(to - from);          
 
     int delayTime = milliTime / steps;

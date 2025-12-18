@@ -126,7 +126,7 @@ void loop() {
   message.y = joystick.readY();
   message.state = SwitchButtonState(state);
 
-  //Handles double click, do to loop being 1 millisecond, the timing will be 100 milliseconds
+  //Handles double click, due to loop being 1 millisecond, the timing will be 100 milliseconds
   if(message.state && doubleClickTime > 0){
     message.state = 2;
     doubleClickTime = 0;
@@ -137,7 +137,7 @@ void loop() {
     doubleClickTime--;
   }
 
-  //Checks if the previously sent value isn't to close value wise, to current, and if it isn't sends the new value
+  //Checks if the previously sent value isn't too close new value, and if it isn't sends the new value
   if (!isClose(message.x, prevMessage.x, 100) || 
       !isClose(message.y, prevMessage.y, 100) ||
       message.state)

@@ -6,24 +6,29 @@
 #include "UltraSound.hpp"
 
 bool IsAuto = false;
-bool canChangeState = true;
+//May be used later for handling changing states fluidly
+//bool canChangeState = true;
 
+//The Ultrasound distances
 long Distance1, Distance2;
-
 long maxRange = 7.0;
 
+//Message received from controller, 1900 is the standard resting point of its joysticks potentiometers
 struct Message {
   int x = 1900;
   int y = 1900;
   int state = 0;
 };
 
-Message messageData;
-
+//Instantiate all different Tasks
 TaskHandle_t WheelsTaskHandle = NULL;
 TaskHandle_t ArmTaskHandle = NULL;
 TaskHandle_t UltraTaskHandle = NULL;
 
+//Instantiate all minor components and messagedata
+Message messageData;
+
+//These structs comes with contructors that automatically sets the GPIO, instead of writing leftU.trigpin = 19, and so on
 UltraSound leftU(19,18);
 UltraSound rightU(13,12);
 
@@ -142,16 +147,17 @@ void ArmTask(void *parameter) {
       float basePos = map(rangeX, 2900.0, 4095.0, 0.0, 255.0);
       float armPos = map(rangeY, 2900.0, 0.0, 0.0, 255.0);
 
-      setPWMOverTime(servoBase, 100,180,1000);
-      setPWMOverTime(servoBase, 180,10,1000);
-      setPWMOverTime(servoBase, 0,100,1000);
+      //Test script for the arm
+      setPWMOverTime(SERVO_BASE, 100,180,1000);
+      setPWMOverTime(SERVO_BASE, 180,10,1000);
+      setPWMOverTime(SERVO_BASE, 0,100,1000);
 
-      setPWMOverTime(servoArmR, 0,90,1000);
+      setPWMOverTime(SERVO_ARM_R, 0,90,1000);
 
-      setPWMOverTime(servoClaw, 10,90,1000);
-      setPWMOverTime(servoClaw, 90,10,1000);
+      setPWMOverTime(SERVO_ARM_CLAW, 10,90,1000);
+      setPWMOverTime(SERVO_ARM_CLAW, 90,10,1000);
 
-      setPWMOverTime(servoArmR, 90,0,1000);
+      setPWMOverTime(SERVO_ARM_R, 90,0,1000);
       vTaskDelay(250 / portTICK_PERIOD_MS);
     } else {
       vTaskDelay(250 / portTICK_PERIOD_MS);
@@ -162,16 +168,13 @@ void ArmTask(void *parameter) {
 //Callback function that will be executed when data is received
 void DataReceivedTask(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&messageData, incomingData, sizeof(messageData));
-  if (messageData.state == 1 && canChangeState){
-    // TODO handle if controller sends true continuosly
+  if (messageData.state == 2){
     Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Changing state");
     IsAuto = !IsAuto;
-    canChangeState = false;
-    //delay(1000);
-  } else if (!messageData.state) {
-    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Ready to change state again");
-    canChangeState = true;
+  } else if (messageData.state == 1){
+    // TODO handle single button press
   }
+
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Bytes received:");
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "X-value: %d", messageData.x);
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Y-value: %d", messageData.y);
@@ -197,7 +200,7 @@ void setup() {
     delay(1);
   }
   PWMBoard.setPWMFreq(50);
-  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Continuing");
+  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Continuing"); //Major checkpoint, past this are minor components startup
   
   frontWheels.setupPins();
   backWheels.setupPins();
