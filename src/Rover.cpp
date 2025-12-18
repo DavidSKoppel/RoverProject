@@ -13,9 +13,9 @@ long Distance1, Distance2;
 long maxRange = 7.0;
 
 struct Message {
-  int x;
-  int y;
-  int state;
+  int x = 1900;
+  int y = 1900;
+  int state = 0;
 };
 
 Message messageData;
@@ -28,7 +28,7 @@ UltraSound leftU(19,18);
 UltraSound rightU(13,12);
 
 Hbro frontWheels(25,26,32,33);
-Hbro backWheels(4,16,17,5);
+Hbro backWheels(4,16,5,17);
 
 void WheelsTask(void *parameter) {
   double rangeX, rangeY;
@@ -39,10 +39,10 @@ void WheelsTask(void *parameter) {
       rangeY = messageData.y;
 
       float speedF = map(rangeX, 2300.0, 4095.0, 0.0, 255.0);
-      float speedB = map(rangeX, 1900.0, 0.0, 0.0, 255.0);
+      float speedB = map(rangeX, 1800.0, 0.0, 0.0, 255.0);
 
       float speedR = map(rangeY, 2300.0, 4095.0, 0.0, 255.0);
-      float speedL = map(rangeY, 1900.0, 0.0, 0.0, 255.0);
+      float speedL = map(rangeY, 1800.0, 0.0, 0.0, 255.0);
 
       if(speedF < 0)
         speedF = 0;
@@ -55,6 +55,7 @@ void WheelsTask(void *parameter) {
 
       if(speedF > speedB)
       {
+        Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Driving %f", speedF);
         Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Driving fowards");
           frontWheels.forward(speedF);
           backWheels.forward(speedF);
@@ -141,16 +142,17 @@ void ArmTask(void *parameter) {
       float basePos = map(rangeX, 2900.0, 4095.0, 0.0, 255.0);
       float armPos = map(rangeY, 2900.0, 0.0, 0.0, 255.0);
 
-      setPWMOverTime(servoBase, 90,180,1000);
-      setPWMOverTime(servoBase, 180,0,1000);
-      setPWMOverTime(servoBase, 0,90,1000);
+      setPWMOverTime(servoBase, 100,180,1000);
+      setPWMOverTime(servoBase, 180,10,1000);
+      setPWMOverTime(servoBase, 0,100,1000);
 
-      setPWMOverTime(servoArmR, 0,40,1000);
+      setPWMOverTime(servoArmR, 0,90,1000);
 
-      setPWMOverTime(servoClaw, 20,90,1000);
-      setPWMOverTime(servoClaw, 90,20,1000);
+      setPWMOverTime(servoClaw, 10,90,1000);
+      setPWMOverTime(servoClaw, 90,10,1000);
 
-      setPWMOverTime(servoArmR, 40,0,1000);
+      setPWMOverTime(servoArmR, 90,0,1000);
+      vTaskDelay(250 / portTICK_PERIOD_MS);
     } else {
       vTaskDelay(250 / portTICK_PERIOD_MS);
     }
@@ -182,13 +184,6 @@ void setup() {
   //Logger for debugging and more
   Logger.registerSerial(DEBUG_LOG, ELOG_LEVEL_DEBUG, "test"); //We want messages with DEBUG level and lower
   
-  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Initializing PWMBoard");
-  while(!PWMBoard.begin()){
-    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, ".");
-    delay(1);
-  }
-  PWMBoard.setPWMFreq(50);
-  
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Initializing WiFi");
   WiFi.mode(WIFI_STA);
   if (esp_now_init() != ESP_OK) {
@@ -196,11 +191,19 @@ void setup() {
     return;
   }
 
+  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Initializing PWMBoard");
+  while(!PWMBoard.begin()){
+    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, ".");
+    delay(1);
+  }
+  PWMBoard.setPWMFreq(50);
+  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Continuing");
+  
   frontWheels.setupPins();
   backWheels.setupPins();
 
-  leftU.setupPins();
-  rightU.setupPins();
+  //leftU.setupPins();
+  //rightU.setupPins();
 
   // ESP_NOW runs on CORE_0
   esp_now_register_recv_cb(esp_now_recv_cb_t(DataReceivedTask));
