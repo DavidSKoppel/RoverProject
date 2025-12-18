@@ -5,7 +5,13 @@
 #include "Arm.hpp"
 #include "UltraSound.hpp"
 
-bool IsAuto = false;
+enum Mode {
+    AUTO = 0,
+    DRIVE = 1,
+    ARM = 2,
+};
+
+Mode currentMode = DRIVE;
 //May be used later for handling changing states fluidly
 //bool canChangeState = true;
 
@@ -39,23 +45,23 @@ void WheelsTask(void *parameter) {
   double rangeX, rangeY;
 
   while(true){
-    if(!IsAuto){
+    if(currentMode == DRIVE){
       rangeX = messageData.x;
       rangeY = messageData.y;
 
-      float speedF = map(rangeX, 2300.0, 4095.0, 0.0, 255.0);
-      float speedB = map(rangeX, 1800.0, 0.0, 0.0, 255.0);
+      float speedB = map(rangeX, 2300.0, 4095.0, 0.0, 255.0);
+      float speedF = map(rangeX, 1800.0, 0.0, 0.0, 255.0);
 
       float speedR = map(rangeY, 2300.0, 4095.0, 0.0, 255.0);
       float speedL = map(rangeY, 1800.0, 0.0, 0.0, 255.0);
 
-      if(speedF < 0)
+      if(speedF < 200)
         speedF = 0;
-      if(speedB < 0)
+      if(speedB < 200)
         speedB = 0;
-      if(speedR < 0)
+      if(speedR < 200)
         speedR = 0;
-      if(speedL < 0)
+      if(speedL < 200)
         speedL = 0;
 
       if(speedF > speedB)
@@ -88,7 +94,7 @@ void WheelsTask(void *parameter) {
       }
       vTaskDelay(250 / portTICK_PERIOD_MS);
     }
-    else
+    else if (currentMode == AUTO)
     {
       long range1 = Distance1;
       long range2 = Distance2;
@@ -120,7 +126,7 @@ void UltraTask(void *parameter) {
   long qDist1, qDist2;
 
   while(true){
-    if(IsAuto){
+    if(currentMode == AUTO){
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Reading Distance1...");
       qDist1 = leftU.distance();
       Distance1 = qDist1;
@@ -139,14 +145,10 @@ void UltraTask(void *parameter) {
 }
 
 void ArmTask(void *parameter) {
+  double armX, armY;
   while (true)
   {
-    if(IsAuto){
-      int rangeX = messageData.x;
-      int rangeY = messageData.y;
-      float basePos = map(rangeX, 2900.0, 4095.0, 0.0, 255.0);
-      float armPos = map(rangeY, 2900.0, 0.0, 0.0, 255.0);
-
+    if(currentMode == AUTO){
       //Test script for the arm
       setPWMOverTime(SERVO_BASE, 100,180,1000);
       setPWMOverTime(SERVO_BASE, 180,10,1000);
@@ -159,6 +161,14 @@ void ArmTask(void *parameter) {
 
       setPWMOverTime(SERVO_ARM_R, 90,0,1000);
       vTaskDelay(250 / portTICK_PERIOD_MS);
+    } else if (currentMode == ARM){
+      armX = messageData.x;
+      armY = messageData.y;
+
+      float armBPos = map(armY, 0.0, 4095.0, 0.0, 180.0);
+
+      PWMBoard.setPWM(SERVO_BASE, 0, armBPos);
+
     } else {
       vTaskDelay(250 / portTICK_PERIOD_MS);
     }
@@ -170,11 +180,14 @@ void DataReceivedTask(const uint8_t * mac, const uint8_t *incomingData, int len)
   memcpy(&messageData, incomingData, sizeof(messageData));
   if (messageData.state == 2){
     Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Changing state");
-    IsAuto = !IsAuto;
+    if (currentMode == ARM)
+        currentMode = AUTO;
+    else
+        currentMode = static_cast<Mode>(currentMode + 1);
   } else if (messageData.state == 1){
     // TODO handle single button press
   }
-
+  messageData.state = 0;
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Bytes received:");
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "X-value: %d", messageData.x);
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Y-value: %d", messageData.y);
