@@ -13,22 +13,25 @@ int doubleClickTime = 0;
 bool buttonBeingPressed = false;
 
 struct Message {
-  int x;
-  int y;
-  int state;
+  int RX;
+  int RY;
+  int LX;
+  int LY;
+  int RButton;
+  int LButton;
 };
 
 struct Joystick
 {
-  int XPin = 33;
-  int YPin = 32;
-  int SwitchButton = 0;
-
-  void setupPins() 
+  int XPin;
+  int YPin;
+  int Button;
+  
+  void setupPins()
   {
     analogSetPinAttenuation(XPin,ADC_11db);
     analogSetPinAttenuation(YPin,ADC_11db);
-    pinMode(SwitchButton, INPUT_PULLUP);
+    pinMode(Button, INPUT_PULLUP);
   }
 
   int readX(){
@@ -40,20 +43,21 @@ struct Joystick
   }
 
   int readButton(){
-    return digitalRead(SwitchButton);
+    return digitalRead(Button);
   }
 };
 
 Message message;
 Message prevMessage;
-Joystick joystick;
+Joystick RJoystick;
+Joystick LJoystick;
 
 // REPLACE WITH YOUR RECEIVER MAC Address
 uint8_t myBoardAddress[] = {0x00, 0x4b, 0x12, 0x3b, 0x47, 0x00};
 
 esp_now_peer_info_t peerInfo;
 
-int SwitchButtonState(int state){
+int SwitchButtonState(int state){//, bool buttonBeingPressed){
   if (!buttonBeingPressed && state == 0) //Button is just pressed
   {
     buttonBeingPressed = true;
@@ -116,45 +120,63 @@ void setup() {
     Logger.log(CRIT_LOG, ELOG_LEVEL_CRITICAL, "Failed to add peer");
     return;
   }
+  
+  RJoystick.XPin = 33;
+  RJoystick.YPin = 32;
+  RJoystick.Button = 0;
 
-  joystick.setupPins();
+  LJoystick.XPin = 34;
+  LJoystick.YPin = 35;
+  LJoystick.Button = 21;
+
+  RJoystick.setupPins();
+  LJoystick.setupPins();
 }
 
 void loop() {
-  int state = joystick.readButton();
-  message.x = joystick.readX();
-  message.y = joystick.readY();
-  message.state = SwitchButtonState(state);
+  int RState = RJoystick.readButton();
+  message.RX = RJoystick.readX();
+  message.RY = RJoystick.readY();
+  message.RButton = SwitchButtonState(RState);//, RJoystick.isBeingPressed);
+
+  message.LX = LJoystick.readX();
+  message.LY = LJoystick.readY();
 
   //Handles double click, due to loop being 1 millisecond, the timing will be 100 milliseconds
-  if(message.state && doubleClickTime > 0){
-    message.state = 2;
+  if(message.RButton && doubleClickTime > 0){
+    message.RButton = 2;
     doubleClickTime = 0;
-  } else if (message.state && doubleClickTime <= 0){
+  } else if (message.RButton && doubleClickTime <= 0){
     doubleClickTime = 100;
   } else if (doubleClickTime > 0) {
-    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "DoubleClickTime = %d", doubleClickTime);
+    //Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "DoubleClickTime = %d", doubleClickTime);
     doubleClickTime--;
   }
 
   //Checks if the previously sent value isn't too close new value, and if it isn't sends the new value
-  if (!isClose(message.x, prevMessage.x, 100) || 
-      !isClose(message.y, prevMessage.y, 100) ||
-      message.state)
+  if (!isClose(message.RX, prevMessage.RX, 100) || 
+      !isClose(message.RY, prevMessage.RY, 100) ||
+      !isClose(message.LX, prevMessage.LX, 100) ||
+      !isClose(message.LY, prevMessage.LY, 100) ||
+      message.RButton)
   {
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(myBoardAddress, (uint8_t *) &message, sizeof(message));
     if (result == ESP_OK) {
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "---------------------------------------------------------------");
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Sent with success. Voltage value: ");
-      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "x: %d", message.x);
-      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "y: %d", message.y);
-      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "state: %i", message.state);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Rx: %d", message.RX);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Ry: %d", message.RY);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Lx: %d", message.LX);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Ly: %d", message.LY);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Button: %i", message.RButton);
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "---------------------------------------------------------------");
 
-      prevMessage.x = message.x;
-      prevMessage.y = message.y;
-      prevMessage.state = message.state;
+      prevMessage.RX = message.RX;
+      prevMessage.RY = message.RY;
+      prevMessage.LX = message.LX;
+      prevMessage.LY = message.LY;
+      prevMessage.RButton = message.RButton;
     }
     else {
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Error sending the data");

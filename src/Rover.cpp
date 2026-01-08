@@ -1,6 +1,9 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
+//#include "soc/soc.h"
+//#include "soc/rtc_cntl_reg.h"
+
 #include "Wheels.hpp"
 #include "Arm.hpp"
 #include "UltraSound.hpp"
@@ -11,7 +14,7 @@ enum Mode {
     ARM = 2,
 };
 
-Mode currentMode = DRIVE;
+Mode currentMode = AUTO;
 //May be used later for handling changing states fluidly
 //bool canChangeState = true;
 
@@ -21,15 +24,18 @@ long maxRange = 7.0;
 
 //Message received from controller, 1900 is the standard resting point of its joysticks potentiometers
 struct Message {
-  int x = 1900;
-  int y = 1900;
-  int state = 0;
+  int RX = 1900;
+  int RY = 1900;
+  int LX = 1900;
+  int LY = 1900;
+  int button = 0;
 };
 
 //Instantiate all different Tasks
 TaskHandle_t WheelsTaskHandle = NULL;
 TaskHandle_t ArmTaskHandle = NULL;
 TaskHandle_t UltraTaskHandle = NULL;
+TaskHandle_t BuzzerTaskHandle = NULL;
 
 //Instantiate all minor components and messagedata
 Message messageData;
@@ -39,15 +45,15 @@ UltraSound leftU(19,18);
 UltraSound rightU(13,12);
 
 Hbro frontWheels(25,26,32,33);
-Hbro backWheels(4,16,5,17);
+Hbro backWheels(4,17,5,16);
 
 void WheelsTask(void *parameter) {
   double rangeX, rangeY;
 
   while(true){
     if(currentMode == DRIVE){
-      rangeX = messageData.x;
-      rangeY = messageData.y;
+      rangeX = messageData.RX;
+      rangeY = messageData.RY;
 
       float speedB = map(rangeX, 2300.0, 4095.0, 0.0, 255.0);
       float speedF = map(rangeX, 1800.0, 0.0, 0.0, 255.0);
@@ -89,8 +95,8 @@ void WheelsTask(void *parameter) {
       }
       else
       {
-          frontWheels.stop();
-          backWheels.stop();
+        frontWheels.stop();
+        backWheels.stop();
       }
       vTaskDelay(250 / portTICK_PERIOD_MS);
     }
@@ -99,13 +105,13 @@ void WheelsTask(void *parameter) {
       long range1 = Distance1;
       long range2 = Distance2;
 
-      if (range1 < maxRange)
+      /*if (range1 < maxRange)
       {
           Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Too close right");
           frontWheels.left(255);
           backWheels.right(255);
       }
-      else if(range2 < maxRange)
+      else */if(range2 < maxRange)
       {
         Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Too close left");
         frontWheels.right(255);
@@ -145,58 +151,87 @@ void UltraTask(void *parameter) {
 }
 
 void ArmTask(void *parameter) {
-  double armX, armY;
+  long RArmX, RArmY, LArmX, LArmY, claw;
+  int isopen = 0;
   while (true)
   {
+    //Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Moving Arm");
     if(currentMode == AUTO){
       //Test script for the arm
-      setPWMOverTime(SERVO_BASE, 100,180,1000);
+      /*setPWMOverTime(SERVO_BASE, 100,180,1000);
       setPWMOverTime(SERVO_BASE, 180,10,1000);
       setPWMOverTime(SERVO_BASE, 0,100,1000);
 
       setPWMOverTime(SERVO_ARM_R, 0,90,1000);
-
+*/
       setPWMOverTime(SERVO_ARM_CLAW, 10,90,1000);
       setPWMOverTime(SERVO_ARM_CLAW, 90,10,1000);
-
-      setPWMOverTime(SERVO_ARM_R, 90,0,1000);
+/*
+      setPWMOverTime(SERVO_ARM_R, 90,0,1000);*/
       vTaskDelay(250 / portTICK_PERIOD_MS);
     } else if (currentMode == ARM){
-      armX = messageData.x;
-      armY = messageData.y;
+      RArmX = messageData.RX;
+      RArmY = messageData.RY;
+      LArmX = messageData.LX;
+      LArmY = messageData.LY;
+      claw = messageData.button;
 
-      float armBPos = map(armY, 0.0, 4095.0, 0.0, 180.0);
-
-      PWMBoard.setPWM(SERVO_BASE, 0, armBPos);
-
+      if(claw == 1 && isopen){
+        Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Opening claw...");
+        setPWMOverTime(SERVO_ARM_CLAW, 10,90,1000);
+        isopen = !isopen;
+      } else if (claw == 1 && !isopen)
+      {
+        Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Closing claw...");
+        setPWMOverTime(SERVO_ARM_CLAW, 90,10,1000);
+        isopen = !isopen;
+      }
+      
+      long armRPos = map(armX, 0.0, 4095.0, SERVOMIN, SERVOMAX);
+      long armLPos = map(armY, 0.0, 4095.0, SERVOMIN, SERVOMAX);
+      
+      //PWMBoard.setPWM(SERVO_BASE, 0, armRPos);
+      PWMBoard.setPWM(SERVO_ARM_R, 0, armRPos);
+      PWMBoard.setPWM(SERVO_ARM_L, 0, armLPos);
+      vTaskDelay(250 / portTICK_PERIOD_MS);
     } else {
       vTaskDelay(250 / portTICK_PERIOD_MS);
     }
   }
 }
 
+void BuzzerTask(void *parameter){
+  tone(pinforbuzzer, 1000);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+  noTone(pinforbuzzer);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+}
+
 //Callback function that will be executed when data is received
 void DataReceivedTask(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&messageData, incomingData, sizeof(messageData));
-  if (messageData.state == 2){
+  if (messageData.button == 2){
     Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Changing state");
     if (currentMode == ARM)
         currentMode = AUTO;
     else
         currentMode = static_cast<Mode>(currentMode + 1);
-  } else if (messageData.state == 1){
+      messageData.button = 0;
+  } else if (messageData.button == 1){
     // TODO handle single button press
   }
-  messageData.state = 0;
+
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Bytes received:");
-  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "X-value: %d", messageData.x);
-  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Y-value: %d", messageData.y);
-  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "State: %d", messageData.state);
+  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "RX-value: %d", messageData.RX);
+  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "RY-value: %d", messageData.RY);
+  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "LX-value: %d", messageData.LX);
+  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "LY-value: %d", messageData.LY);
+  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "State: %i", messageData.button);
 }
 
 void setup() {
   Serial.begin(115200);
-
+  //WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   //Logger for debugging and more
   Logger.registerSerial(DEBUG_LOG, ELOG_LEVEL_DEBUG, "test"); //We want messages with DEBUG level and lower
   
@@ -251,6 +286,16 @@ void setup() {
     NULL,              // Parameters
     1,                 // Priority
     &WheelsTaskHandle, // Task handle
+    1                  // Core
+  );
+
+  xTaskCreatePinnedToCore(
+    BuzzerTask,        // Task function
+    "BuzzerTask",      // Task name
+    2048,              // Stack size (bytes)
+    NULL,              // Parameters
+    2,                 // Priority
+    &BuzzerTaskHandle, // Task handle
     1                  // Core
   );
 }
