@@ -10,7 +10,7 @@ struct UltraSound
     int trigPin;
     int echoPin;
 
-    long cm, duration;
+    float cm, duration;
 
     UltraSound(int trigPinVal, int echoPinVal){
         trigPin = trigPinVal;
@@ -35,7 +35,7 @@ struct UltraSound
         // Convert the time into a distance
         cm = (duration/2) / 29.1;     // Divide by 29.1 or multiply by 0.0343
         
-        Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Distance Measurement: %d", cm);
+        Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Distance Measurement: %f", cm);
         return cm;
     }
 };

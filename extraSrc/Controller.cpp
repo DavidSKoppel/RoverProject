@@ -10,7 +10,8 @@
 #define CRIT_LOG 2
 
 int doubleClickTime = 0;
-bool buttonBeingPressed = false;
+bool leftButtonBeingPressed = false;
+bool rightButtonBeingPressed = false;
 
 struct Message {
   int RX;
@@ -53,11 +54,11 @@ Joystick RJoystick;
 Joystick LJoystick;
 
 // REPLACE WITH YOUR RECEIVER MAC Address
-uint8_t myBoardAddress[] = {0x00, 0x4b, 0x12, 0x3b, 0x47, 0x00};
+uint8_t myBoardAddress[] = {0x00, 0x4b, 0x12, 0x3a, 0x2d, 0xec};
 
 esp_now_peer_info_t peerInfo;
 
-int SwitchButtonState(int state){//, bool buttonBeingPressed){
+int SwitchButtonState(bool &buttonBeingPressed, int state){//, bool buttonBeingPressed){
   if (!buttonBeingPressed && state == 0) //Button is just pressed
   {
     buttonBeingPressed = true;
@@ -137,13 +138,15 @@ void loop() {
   int RState = RJoystick.readButton();
   message.RX = RJoystick.readX();
   message.RY = RJoystick.readY();
-  message.RButton = SwitchButtonState(RState);//, RJoystick.isBeingPressed);
+  message.RButton = SwitchButtonState(rightButtonBeingPressed,RState);//, RJoystick.isBeingPressed);
 
+  int LState = LJoystick.readButton();
   message.LX = LJoystick.readX();
   message.LY = LJoystick.readY();
+  message.LButton = SwitchButtonState(leftButtonBeingPressed,LState);//, RJoystick.isBeingPressed);
 
   //Handles double click, due to loop being 1 millisecond, the timing will be 100 milliseconds
-  if(message.RButton && doubleClickTime > 0){
+  /*if(message.RButton && doubleClickTime > 0){
     message.RButton = 2;
     doubleClickTime = 0;
   } else if (message.RButton && doubleClickTime <= 0){
@@ -151,14 +154,15 @@ void loop() {
   } else if (doubleClickTime > 0) {
     //Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "DoubleClickTime = %d", doubleClickTime);
     doubleClickTime--;
-  }
+  }*/
 
   //Checks if the previously sent value isn't too close new value, and if it isn't sends the new value
   if (!isClose(message.RX, prevMessage.RX, 100) || 
       !isClose(message.RY, prevMessage.RY, 100) ||
       !isClose(message.LX, prevMessage.LX, 100) ||
       !isClose(message.LY, prevMessage.LY, 100) ||
-      message.RButton)
+      message.RButton ||
+      message.LButton)
   {
     // Send message via ESP-NOW
     esp_err_t result = esp_now_send(myBoardAddress, (uint8_t *) &message, sizeof(message));
@@ -170,13 +174,15 @@ void loop() {
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Lx: %d", message.LX);
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Ly: %d", message.LY);
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Button: %i", message.RButton);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Button: %i", message.LButton);
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "---------------------------------------------------------------");
 
       prevMessage.RX = message.RX;
       prevMessage.RY = message.RY;
       prevMessage.LX = message.LX;
       prevMessage.LY = message.LY;
-      prevMessage.RButton = message.RButton;
+      //prevMessage.RButton = message.RButton;
+      //prevMessage.LButton = message.LButton;
     }
     else {
       Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Error sending the data");

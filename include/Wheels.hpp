@@ -37,17 +37,17 @@ struct Hbro
     }
     void right(int speed)
     {
-        analogWrite(motorA1, 0);
-        analogWrite(motorA2, speed);
-        analogWrite(motorB1, speed);
-        analogWrite(motorB2, 0);
-    }
-    void left(int speed)
-    {
         analogWrite(motorA1, speed);
         analogWrite(motorA2, 0);
         analogWrite(motorB1, 0);
         analogWrite(motorB2, speed);
+    }
+    void left(int speed)
+    {
+        analogWrite(motorA1, 0);
+        analogWrite(motorA2, speed);
+        analogWrite(motorB1, speed);
+        analogWrite(motorB2, 0);
     }
     void stop()
     {
