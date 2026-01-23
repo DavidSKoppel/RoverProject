@@ -4,6 +4,7 @@
 #include <Elog.h>
 
 #include "math.hpp"
+#include "pitches.h"
 
 #define DEBUG_LOG 0
 #define INFO_LOG 1
@@ -143,7 +144,7 @@ void loop() {
   int LState = LJoystick.readButton();
   message.LX = LJoystick.readX();
   message.LY = LJoystick.readY();
-  message.LButton = SwitchButtonState(leftButtonBeingPressed,LState);//, RJoystick.isBeingPressed);
+  message.LButton = SwitchButtonState(leftButtonBeingPressed,LState);//, LJoystick.isBeingPressed);
 
   //Handles double click, due to loop being 1 millisecond, the timing will be 100 milliseconds
   /*if(message.RButton && doubleClickTime > 0){
@@ -156,7 +157,6 @@ void loop() {
     doubleClickTime--;
   }*/
 
-  //Checks if the previously sent value isn't too close new value, and if it isn't sends the new value
   if (!isClose(message.RX, prevMessage.RX, 100) || 
       !isClose(message.RY, prevMessage.RY, 100) ||
       !isClose(message.LX, prevMessage.LX, 100) ||

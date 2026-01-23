@@ -2,7 +2,7 @@
 #include <Adafruit_PWMServoDriver.h>
 
 #define SERVOMIN 150
-#define SERVOMAX 600
+#define SERVOMAX 670
 
 enum Servo {
     SERVO_BASE = 0,
@@ -28,17 +28,20 @@ void setServoPos(Servo servo, int speed, int currentPos){
     PWMBoard.setPWM(servo, 0, currentPos);
 }
 
-void setPWMOverTime(Servo servo, int from, int to, int milliTime){
-    int steps = abs(to - from);          
+void setPWMOverTime(Servo servo, int& fromOut, int to, int milliTime){
+    if(fromOut != to){
+        int steps = abs(to - fromOut);          
 
-    int delayTime = milliTime / steps;
+        int delayTime = milliTime / steps;
 
-    int step = (to > from) ? 1 : -1;
+        int step = (to > fromOut) ? 1 : -1;
 
-    for (int posDegrees = from; posDegrees != to; posDegrees += step) {
-        int pos = servoConvertDegrees(posDegrees);
-        PWMBoard.setPWM(servo, 0, pos);
-        vTaskDelay(delayTime / portTICK_PERIOD_MS);
-        //delay(delayTime);
+        for (int pos = fromOut; pos != to; pos += step) {
+            //int posDegrees = servoConvertDegrees(posDegrees);
+            PWMBoard.setPWM(servo, 0, pos);
+            vTaskDelay(delayTime / portTICK_PERIOD_MS);
+            //delay(delayTime);
+        }
     }
+    fromOut = to;
 }

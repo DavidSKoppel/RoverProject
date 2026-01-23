@@ -7,23 +7,32 @@
 #include "Wheels.hpp"
 #include "Arm.hpp"
 #include "UltraSound.hpp"
+#include "ToF.hpp"
 
 enum Mode {
-    AUTO = 0,
-    DRIVE = 1,
-    ARM = 2,
+  AUTO = 0,
+  DEMO = 1,
+  DRIVE = 2,
+  ARM = 3,
 };
 
-Mode currentMode = ARM;
+Mode currentMode = DRIVE;
 
 //May be used later for handling changing states fluidly
 //bool canChangeState = true;
 
-//The Ultrasound distances
-long Distance1 = 100; 
-long Distance2 = 100;
-long Distance3 = 100;
-long maxRange = 10.0;
+//Variables for demo mode
+bool useArm = false;
+bool useWheels = true;
+
+//The Ultrasound distances (centimeters)
+long UltraDist1 = 100; 
+long UltraDist2 = 100;
+long minUltraDist = 10.0;
+
+//Time of Flight laser distance (millimeters)
+long ToFDist = 1000;
+long minToFDist = 100; 
 
 //Message received from controller, 1900 is the standard resting point of its joysticks potentiometers
 struct Message {
@@ -39,7 +48,7 @@ struct Message {
 TaskHandle_t WheelsTaskHandle = NULL;
 TaskHandle_t ArmTaskHandle = NULL;
 TaskHandle_t UltraTaskHandle = NULL;
-TaskHandle_t BuzzerTaskHandle = NULL;
+TaskHandle_t ToFTaskHandle = NULL;
 
 //Instantiate all minor components and messagedata
 Message messageData;
@@ -51,6 +60,24 @@ UltraSound rightU(13,23);
 
 Hbro frontWheels(25,26,32,33);
 Hbro backWheels(5,17,4,16);
+
+void ChangeMode(int forward, int backward){
+  if (messageData.Rbutton == 1){
+    if (currentMode == ARM)
+      currentMode = AUTO;
+    else
+      currentMode = static_cast<Mode>(currentMode + 1);
+    messageData.Rbutton = 0;
+    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Changing state to: %d", currentMode);
+  } else if (messageData.Lbutton == 1){
+    if (currentMode == AUTO)
+      currentMode = ARM;
+    else
+      currentMode = static_cast<Mode>(currentMode - 1);
+    messageData.Lbutton = 0;
+    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Changing state to: %d", currentMode);
+  }
+}
 
 void WheelsTask(void *parameter) {
   double rangeX, rangeY;
@@ -72,7 +99,7 @@ void WheelsTask(void *parameter) {
         speedB = 0;
       if(speedR < 200)
         speedR = 0;
-      if(speedL < 190)
+      if(speedL < 200)
         speedL = 0;
 
       if(speedF > speedB)
@@ -87,6 +114,7 @@ void WheelsTask(void *parameter) {
         Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Driving backwards");
           frontWheels.backward(speedB);
           backWheels.backward(speedB);
+          PWMBoard.setPWM(15, 100, 0);
       }
       else if(speedR > speedL){
         Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Driving right");
@@ -102,25 +130,61 @@ void WheelsTask(void *parameter) {
       {
         frontWheels.stop();
         backWheels.stop();
+        PWMBoard.setPWM(15, 0, 4096);
       }
       vTaskDelay(30 / portTICK_PERIOD_MS);
     }
     else if (currentMode == AUTO)
     {
-      long range1 = Distance1;
-      long range2 = Distance2;
+      long range1 = UltraDist1;
+      long range2 = UltraDist2;
+      long range3 = ToFDist;
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Left distance %i", range1);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Right distance %i", range2);
+      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Front distance %i", range3);
 
-      if (range1 < maxRange)
+      if(range3 < minToFDist){
+        Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Wall in front");
+        
+        frontWheels.stop();
+        backWheels.stop();
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+
+        frontWheels.backward(255);
+        backWheels.backward(255);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+
+        frontWheels.left(255);
+        backWheels.left(255);
+      
+        //Adjust until it turns 90 degrees
+        vTaskDelay(400 / portTICK_PERIOD_MS);
+        range3 = ToFDist;
+        Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Front distance %i", range3);
+        
+        frontWheels.stop();
+        backWheels.stop();
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+
+        if(range3 < minToFDist){
+          frontWheels.right(255);
+          backWheels.right(255);
+          
+          //Adjust until it turns 180 degrees
+          vTaskDelay(800 / portTICK_PERIOD_MS);
+        }
+      }
+      else if (range1 < minUltraDist)
       {
           Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Too close left");
-          frontWheels.right(200);
-          backWheels.right(200);
+          frontWheels.right(190);
+          backWheels.right(190);
       }
-      else if(range2 < maxRange)
+      else if(range2 < minUltraDist)
       {
         Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Too close right");
-        frontWheels.left(200);
-        backWheels.left(200);
+        frontWheels.left(190);
+        backWheels.left(190);
       }
       else
       {
@@ -128,10 +192,37 @@ void WheelsTask(void *parameter) {
         frontWheels.forward(200);
         backWheels.forward(200);
       }
-      vTaskDelay(30 / portTICK_PERIOD_MS);
+      vTaskDelay(20 / portTICK_PERIOD_MS);
+    }
+    else if (currentMode == DEMO)
+    {
+      vTaskDelay(1200 / portTICK_PERIOD_MS);
+      if(useWheels){
+
+        frontWheels.left(255);
+        backWheels.left(255);
+        vTaskDelay(1400 / portTICK_PERIOD_MS);
+
+        frontWheels.stop();
+        backWheels.stop();
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+
+        frontWheels.forward(255);
+        backWheels.forward(255);
+        vTaskDelay(240 / portTICK_PERIOD_MS);
+
+        frontWheels.stop();
+        backWheels.stop();
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+
+        useWheels = false;
+        useArm = true;
+        }
     }
     else
     {
+      frontWheels.stop();
+      backWheels.stop();
       vTaskDelay(250 / portTICK_PERIOD_MS);
     }
   }
@@ -142,21 +233,15 @@ void UltraTask(void *parameter) {
 
   while(true){
     if(currentMode == AUTO){
-      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Reading Left Distance...");
       qDist1 = leftU.distance();
-      Distance1 = qDist1;
-      //xQueueSend(QDistance1, &qDist1, portMAX_DELAY);
+      UltraDist1 = qDist1;
+      //xQueueSend(QUltraDist1, &qDist1, portMAX_DELAY);
 
-      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Reading Right Distance...");
       qDist2 = rightU.distance();
-      Distance2 = qDist2;
-      //xQueueSend(QDistance2, &qDist2, portMAX_DELAY);
-/*
-      Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Reading Middle Distance...");
-      qDist3 = middleU.distance();
-      Distance3 = qDist3;
-*/
-      vTaskDelay(30 / portTICK_PERIOD_MS);
+      UltraDist2 = qDist2;
+      //xQueueSend(QUltraDist2, &qDist2, portMAX_DELAY);
+
+      vTaskDelay(20 / portTICK_PERIOD_MS);
     } else {
       vTaskDelay(250 / portTICK_PERIOD_MS);
     }
@@ -166,16 +251,17 @@ void UltraTask(void *parameter) {
 void ArmTask(void *parameter) {
   bool isTurnedOff = false;
   int BaseData, ArmBData, ArmCData, ClawData;
-  int servoBasePos = 300;
-  int servoArmBPos = 400;
-  int servoArmCPos = 400;
-  int servoClawPos = 470;
+  int servoBasePos = 400;
+  int servoArmBPos = 300;
+  int servoArmCPos = 50;
+  int servoClawPos = 300;
 
   //Startup for resetting position
   PWMBoard.setPWM(SERVO_BASE, 0, servoBasePos);
   PWMBoard.setPWM(SERVO_ARM_B, 0, servoArmBPos);
   PWMBoard.setPWM(SERVO_ARM_C, 0, servoArmCPos);
   PWMBoard.setPWM(SERVO_CLAW, 0, servoClawPos);
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   while (true)
   {
@@ -213,18 +299,47 @@ void ArmTask(void *parameter) {
       
       int newPos4 = clawSpeed * 0.00053;
       servoClawPos += newPos4;
-      servoClawPos = (servoClawPos < 470) ? 470 : servoClawPos;
+      servoClawPos = (servoClawPos < 0) ? 0 : servoClawPos;
       servoClawPos = (servoClawPos > 670) ? 670 : servoClawPos;
 
       PWMBoard.setPWM(SERVO_CLAW, 0, servoClawPos);
       PWMBoard.setPWM(SERVO_ARM_C, 0, servoArmCPos);
       PWMBoard.setPWM(SERVO_ARM_B, 0, servoArmBPos);
       PWMBoard.setPWM(SERVO_BASE, 0, servoBasePos);
-      
-      //setServoPos(SERVO_ARM_B,armBSpeed,servoArmBPos);
 
       vTaskDelay(6 / portTICK_PERIOD_MS);
     } 
+    else if (currentMode == DEMO){
+      PWMBoard.setPWM(SERVO_BASE, 0, 4096);
+      PWMBoard.setPWM(SERVO_ARM_B, 0, 4096);
+      PWMBoard.setPWM(SERVO_ARM_C, 0, 4096);
+      PWMBoard.setPWM(SERVO_CLAW, 0, 4096);
+      if(useArm){
+        Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Executing demo mode: Arm");
+        
+        setPWMOverTime(SERVO_BASE,servoBasePos,400,1000);
+        setPWMOverTime(SERVO_ARM_B,servoArmBPos,300,1000);
+        setPWMOverTime(SERVO_ARM_C,servoArmCPos,50,1000);
+        setPWMOverTime(SERVO_CLAW,servoClawPos,400,1000);
+
+        setPWMOverTime(SERVO_ARM_C,servoArmCPos,200,1000);
+        setPWMOverTime(SERVO_ARM_B,servoArmBPos,500,1000);
+
+        setPWMOverTime(SERVO_ARM_C,servoArmCPos,330,1000);
+        setPWMOverTime(SERVO_ARM_B,servoArmBPos,650,1000);
+
+        setPWMOverTime(SERVO_CLAW,servoClawPos,250,1000);
+        setPWMOverTime(SERVO_ARM_B,servoArmBPos,500,1000);
+
+        setPWMOverTime(SERVO_ARM_C,servoArmCPos,200,1000);
+        setPWMOverTime(SERVO_ARM_B,servoArmBPos,300,1000);
+
+        setPWMOverTime(SERVO_ARM_C,servoArmCPos,50,1000);
+
+        useArm = false;
+      }
+      vTaskDelay(250 / portTICK_PERIOD_MS);
+    }
     else 
     {
       if (!isTurnedOff){
@@ -239,31 +354,29 @@ void ArmTask(void *parameter) {
   }
 }
 
-void BuzzerTask(void *parameter){
-  //tone(pinforbuzzer, 1000);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-  //noTone(pinforbuzzer);
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
+void ToFTask(void *parameter){
+  while (true)
+  {
+    if (currentMode == AUTO){
+      lox.rangingTest(&measure, false); // pass in 'true' to get debug data printout!
+
+      if (measure.RangeStatus != 4) {  // phase failures have incorrect data
+        ToFDist = measure.RangeMilliMeter;
+        Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "ToF Distance (mm): %d", measure.RangeMilliMeter);
+      } else {
+        Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "ToF Sensor out of range");
+      }
+      vTaskDelay(20 / portTICK_PERIOD_MS);
+    } else {
+      vTaskDelay(250 / portTICK_PERIOD_MS);
+    }
+  }
 }
 
 //Callback function that will be executed when data is received
 void DataReceivedTask(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&messageData, incomingData, sizeof(messageData));
-  if (messageData.Rbutton == 1){
-    if (currentMode == ARM)
-      currentMode = AUTO;
-    else
-      currentMode = static_cast<Mode>(currentMode + 1);
-    messageData.Rbutton = 0;
-    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Changing state to: %d", currentMode);
-  } else if (messageData.Lbutton == 1){
-    if (currentMode == AUTO)
-      currentMode = ARM;
-    else
-      currentMode = static_cast<Mode>(currentMode - 1);
-    messageData.Lbutton = 0;
-    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Changing state to: %d", currentMode);
-  }
+  ChangeMode(messageData.Rbutton, messageData.Lbutton);
 
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Bytes received:");
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "RX-value: %d", messageData.RX);
@@ -279,6 +392,12 @@ void setup() {
   //Logger for debugging and more
   Logger.registerSerial(INFO_LOG, ELOG_LEVEL_INFO, "teste"); //We want messages with DEBUG level and lower
   Logger.registerSerial(DEBUG_LOG, ELOG_LEVEL_DEBUG, "test"); //We want messages with DEBUG level and lower
+
+  int freq = 20000;
+  int chan = 8;
+
+  analogWriteFrequency(freq);
+  analogWriteResolution(chan);
   
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Initializing WiFi");
   WiFi.mode(WIFI_STA);
@@ -286,6 +405,15 @@ void setup() {
     Logger.log(ERR_LOG, ELOG_LEVEL_ERROR, "Error initializing ESP-NOW");
     return;
   }
+
+  Wire.begin();
+
+  Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Initializing ToF");
+  lox.begin(0x29);
+  if (!lox.begin()) {
+    Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Failed to boot VL53L0X");
+    while(1);
+  }  
   
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Initializing PWMBoard");
   while(!PWMBoard.begin()){
@@ -294,7 +422,6 @@ void setup() {
   }
   PWMBoard.setPWMFreq(50);
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Continuing"); //Major checkpoint, past this are minor components startup
-  
   
   frontWheels.setupPins();
   backWheels.setupPins();
@@ -325,9 +452,8 @@ void setup() {
     NULL,           // Parameters
     2,              // Priority
     &ArmTaskHandle, // Task handle
-    0               // Core
+    1               // Core
   );
-
 
   Logger.log(DEBUG_LOG, ELOG_LEVEL_DEBUG, "Initializing WheelsTask");
   xTaskCreatePinnedToCore(
@@ -339,17 +465,18 @@ void setup() {
     &WheelsTaskHandle, // Task handle
     1                  // Core
   );
-/*
+
   xTaskCreatePinnedToCore(
-    BuzzerTask,        // Task function
-    "BuzzerTask",      // Task name
-    2048,              // Stack size (bytes)
-    NULL,              // Parameters
-    2,                 // Priority
-    &BuzzerTaskHandle, // Task handle
-    1                  // Core
+    ToFTask,        // Task function
+    "ToFTask",      // Task name
+    4096,           // Stack size (bytes)
+    NULL,           // Parameters
+    2,              // Priority
+    &ToFTaskHandle, // Task handle
+    0               // Core
   );
-  */
+  
+  Logger.log(INFO_LOG, ELOG_LEVEL_INFO, "Rover is currently in %d mode", currentMode);
 }
 
 void loop() {
